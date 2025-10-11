@@ -1,10 +1,6 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 
-// StudyTracker — fixed unterminated JSX + threshold alignment
-// - Fixed missing closing </div> for the Timer container (unterminated JSX error)
-// - Aligned DEFAULT_THRESHOLDS with runtime assertions and user request: 30min, 1h, 2h, 3h
-// - Kept other improvements: edit modal-like inline editor, multiline notes, auto-resize, robust datetime parsing
-
+/** returns a time in hh:mm:ss form given a ms */ 
 function formatDuration(ms) {
   const s = Math.floor(ms / 1000);
   const hh = Math.floor(s / 3600)
@@ -19,12 +15,14 @@ function formatDuration(ms) {
   return `${hh}:${mm}:${ss}`;
 }
 
+/** returns a string representing given date in mm-dd-yyyy form */
 function startOfDayISO(tsOrDate) {
   const d = new Date(tsOrDate);
   d.setHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
 }
 
+/** returns an array of Date objects representing each of the last 365 (default) days */ 
 function daysArray(days = 365) {
   const arr = [];
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -38,9 +36,10 @@ function daysArray(days = 365) {
   return arr;
 }
 
-// default thresholds (seconds) 1s, 30 min, 1 hr, 2hr, 3hr, 4hr, 5hr
+/**  default thresholds (seconds) 1s, 30 min, 1 hr, 2hr, 3hr, 4hr, 5hr */
 const DEFAULT_THRESHOLDS = [1, 30 * 60,  60 * 60, 2 * 60 * 60, 3*60*60];
 
+/** returns the color of a tile given the number of seconds studied, using DEFAULT_THRESHOLDS */
 function colorForCount(seconds, thresholds = DEFAULT_THRESHOLDS) {
   if (!seconds || seconds <= 0) return "bg-gray-700";
   const [t1, t2, t3, t4, t5]  = thresholds;
@@ -52,6 +51,7 @@ function colorForCount(seconds, thresholds = DEFAULT_THRESHOLDS) {
   return "bg-gray-700";
 }
 
+/** returns {hours, minutes, seconds} in an array, given a number of seconds */
 function secondsToHMS(sec) {
   const s = Math.floor(sec);
   const hh = Math.floor(s / 3600);
@@ -60,10 +60,12 @@ function secondsToHMS(sec) {
   return { hh, mm, ss };
 }
 
+/** returns a given string padded with 2 zeros*/
 function pad(n) {
   return n.toString().padStart(2, "0");
 }
 
+/** returns a formatted local datetime string given a number of ms since start of day*/
 function toLocalDatetimeString(ms) {
   if (ms === null || ms === undefined) return "";
   const d = new Date(Number(ms));
@@ -73,6 +75,9 @@ function toLocalDatetimeString(ms) {
   )}`;
 }
 
+/** returns a Date object representing the local datetime string,  
+ * expected format: YYYY-MM-DDTHH:mm (value of input[type=datetime-local]) 
+*/
 function fromLocalDatetimeString(str) {
   if (!str) return null;
   // expected format: YYYY-MM-DDTHH:mm (value of input[type=datetime-local])
@@ -93,14 +98,14 @@ export default function App() {
   const [tick, setTick] = useState(0);
   const tickRef = useRef(null);
   const [sessions, setSessions] = useState([]);
-  const [topicInput, setTopicInput] = useState("");
-  const [notesInput, setNotesInput] = useState("");
+  const [logOpen, setLogOpen] = useState(false);
 
   // editing state
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const notesRef = useRef(null);
 
+  // loading sessions from local storage into memory
   useEffect(() => {
     try {
       const raw = localStorage.getItem("study_sessions_v1");
@@ -129,6 +134,7 @@ export default function App() {
     }
   }, []);
 
+  // saving sessions from memory into local storage
   useEffect(() => {
     try {
       localStorage.setItem("study_sessions_v1", JSON.stringify(sessions));
@@ -179,16 +185,14 @@ export default function App() {
       endAt: endTime,
       startAt: endTime - duration,
       durationMs: duration,
-      topic: topicInput || "(no topic)",
-      notes: notesInput || "",
+      topic: "",
+      notes: "",
     };
 
     setSessions((s) => [session, ...s]);
     setIsRunning(false);
     setStartAt(null);
     setElapsedOffset(0);
-    setTopicInput("");
-    setNotesInput("");
   }
 
   function deleteSession(id) {
@@ -216,9 +220,6 @@ export default function App() {
     }
   });
 
-  // thresholds to use (seconds)
-  const thresholds = DEFAULT_THRESHOLDS;
-
   const gridStyle = {
     display: "grid",
     gridTemplateRows: "repeat(7, 12px)",
@@ -226,10 +227,11 @@ export default function App() {
     gridAutoColumns: "12px",
     gap: "4px",
     alignItems: "center",
-    justifyContent: "start",
+    justifyContent: "center", 
     overflowX: "auto",
-    width: "100%",
+    width: "max-content",     
   };
+
 
   // editing helpers
   function openEditor(session) {
@@ -274,137 +276,156 @@ export default function App() {
       notesRef.current.style.height = `${notesRef.current.scrollHeight}px`;
     }
   }, [editDraft]);
+  
+  // total time across all sessions
+  const totalTime = sessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
+  const { hh, mm, ss } = secondsToHMS(Math.floor(totalTime / 1000));
 
   return (
-    <div className="p-6 max-w-6xl mx-auto bg-black text-white min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">Study Tracker</h1>
+    <div className="min-h-screen w-screen bg-black text-white p-6 overflow-x-hidden">
 
-      <div className="p-4 border border-gray-700 rounded-lg shadow-sm mb-6">
-        <h2 className="text-lg font-semibold mb-2">Timer</h2>
+      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+
         <div className="text-4xl font-mono mb-4">{formatDuration(currentElapsed)}</div>
 
         <div className="space-x-2 mb-4">
           {!isRunning && elapsedOffset === 0 && (
-            <button onClick={handleStart} className="px-4 py-2 rounded bg-green-600 text-white">Start</button>
+            <button onClick={handleStart} className="px-4 py-2 font-mono rounded bg-green-600 text-white">Start</button>
           )}
           {isRunning && (
-            <button onClick={handlePause} className="px-4 py-2 rounded bg-yellow-500 text-black">Pause</button>
+            <button onClick={handlePause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">Pause</button>
           )}
           {!isRunning && elapsedOffset > 0 && (
-            <button onClick={handleResume} className="px-4 py-2 rounded bg-green-500 text-white">Resume</button>
+            <button onClick={handleResume} className="px-4 py-2 font-mono rounded bg-green-500 text-white">Resume</button>
           )}
-          <button onClick={handleStopAndSave} className="px-4 py-2 rounded bg-blue-600 text-white">Stop &amp; Save</button>
+          <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">Save</button>
         </div>
       </div>
 
-      <div className="p-4 border border-gray-700 rounded-lg shadow-sm mb-6">
-        <div style={gridStyle}>
-          {dayList.map((d) => {
-            const key = startOfDayISO(d);
-            const seconds = countsByDay[key] || 0;
-            const cls = colorForCount(seconds, thresholds);
-            const { hh, mm, ss } = secondsToHMS(seconds);
-            const tooltip = `${key} — ${hh}h ${mm}m ${ss}s`;
-            return (
-              <div
-                key={key}
-                title={tooltip}
-                className={`w-3 h-3 rounded-sm border border-gray-700 ${cls}`}
-                style={{ width: 12, height: 12 }}
-              />
-            );
-          })}
-        </div>
-      </div>
 
-      <div className="p-4 border border-gray-700 rounded-lg shadow-sm">
-        <h2 className="text-lg font-semibold mb-3">Session Log</h2>
-        <div className="space-y-3">
-          {sessions.length === 0 && <div className="text-gray-500">No sessions recorded yet.</div>}
-          {sessions.map((s) => (
-            <div key={s.id} className="p-3 border border-gray-700 rounded">
-              {editingId === s.id && editDraft ? (
-                <div>
-                  <div className="text-sm text-gray-400 mb-1">Editing session</div>
-                  <div className="text-lg font-medium mb-2">{formatDuration(editDraft.durationMs || 0)}</div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <label className="block text-xs text-gray-400">Topic</label>
-                      <input
-                        value={editDraft.topic}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
-                        className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-400">Notes</label>
-                      <textarea
-                        ref={notesRef}
-                        value={editDraft.notes}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))}
-                        className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1"
-                        rows={3}
-                        style={{ resize: "none", overflow: "hidden" }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                    <div>
-                      <label className="block text-xs text-gray-400">Start (local)</label>
-                      <input
-                        type="datetime-local"
-                        value={toLocalDatetimeString(editDraft.startAt)}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, startAt: fromLocalDatetimeString(e.target.value) }))}
-                        className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-400">End (local)</label>
-                      <input
-                        type="datetime-local"
-                        value={toLocalDatetimeString(editDraft.endAt)}
-                        onChange={(e) => setEditDraft((d) => ({ ...d, endAt: fromLocalDatetimeString(e.target.value) }))}
-                        className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button onClick={saveEdit} className="px-3 py-1 rounded bg-green-600 text-white">Save</button>
-                    <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-700 text-white">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <div className="text-sm text-gray-400">{new Date(s.startAt).toLocaleString()} — {new Date(s.endAt).toLocaleString()}</div>
-                  <div className="text-lg font-medium mb-2">{formatDuration(s.durationMs)}</div>
-
-                  <div className="mb-2">
-                    <div className="text-xs text-gray-400">Topic</div>
-                    <div className="text-sm">{s.topic}</div>
-                  </div>
-
-                  <div className="mb-2">
-                    <div className="text-xs text-gray-400">Notes</div>
-                    <div className="whitespace-pre-wrap text-sm">{s.notes}</div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => openEditor(s)} className="px-3 py-1 border border-gray-600 rounded text-sm">Edit</button>
-                    <button
-                      onClick={() => deleteSession(s.id)}
-                      className="px-3 py-1 border border-gray-600 rounded text-sm text-red-400"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )}
+      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+         <div className="flex justify-center w-full">
+            <div style={gridStyle}>
+            {dayList.map((d) => {
+              const key = startOfDayISO(d);
+              const seconds = countsByDay[key] || 0;
+              const cls = colorForCount(seconds);
+              const { hh, mm, ss } = secondsToHMS(seconds);
+              const tooltip = `${key} — ${hh}h ${mm}m ${ss}s`;
+              return (  
+                <div
+                  key={key}
+                  title={tooltip}
+                  className={`w-3 h-3 rounded-sm border border-gray-700 ${cls}`}
+                  style={{ width: 12, height: 12 }}
+                />
+              );
+            })}
             </div>
-          ))}
-        </div>
+         </div>
+      </div>
+
+      <div className=" flex flex-col items-center">
+        <button
+          onClick={() => setLogOpen(!logOpen)}
+          className="text-2xl font-semibold mb-3 flex flex-col items-center"
+        >
+          {logOpen ? "▲" : "▼"} 
+        </button>
+
+        {logOpen && (
+          <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+                  <div className="text-gray-500 font-mono">
+                    {hh}h {mm}m {ss}s
+                  </div>
+                  <div className="space-y-3">
+                    {sessions.length === 0 && <div className="text-gray-500 font-mono">No sessions recorded yet.</div>}
+                    {sessions.map((s) => (
+                      <div key={s.id} className="p-3 border border-gray-700 rounded">
+                        {editingId === s.id && editDraft ? (
+                          <div>
+                            <div className="text-sm text-gray-400 mb-1 font-mono">Editing session</div>
+                            <div className="text-lg font-medium mb-2 font-mono">{formatDuration(editDraft.durationMs || 0)}</div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-xs text-gray-400 font-mono">Topic</label>
+                                <input
+                                  value={editDraft.topic}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
+                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-400 font-mono">Notes</label>
+                                <textarea
+                                  ref={notesRef}
+                                  value={editDraft.notes}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))}
+                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                  rows={3}
+                                  style={{ resize: "none", overflow: "hidden" }}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="block text-xs text-gray-400 font-mono">Start (local)</label>
+                                <input
+                                  type="datetime-local"
+                                  value={toLocalDatetimeString(editDraft.startAt)}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, startAt: fromLocalDatetimeString(e.target.value) }))}
+                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs text-gray-400 font-mono">End (local)</label>
+                                <input
+                                  type="datetime-local"
+                                  value={toLocalDatetimeString(editDraft.endAt)}
+                                  onChange={(e) => setEditDraft((d) => ({ ...d, endAt: fromLocalDatetimeString(e.target.value) }))}
+                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button onClick={saveEdit} className="px-3 py-1 rounded bg-green-600 text-white font-mono">Save</button>
+                              <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-700 text-white font-mono">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div className="text-sm text-gray-400 font-mono">{new Date(s.startAt).toLocaleString()} — {new Date(s.endAt).toLocaleString()}</div>
+                            <div className="text-lg font-medium mb-2 font-mono">{formatDuration(s.durationMs)}</div>
+
+                            <div className="mb-2">
+                              <div className="text-xs text-gray-400 font-mono">Topic</div>
+                              <div className="text-sm font-mono">{s.topic}</div>
+                            </div>
+
+                            <div className="mb-2">
+                              <div className="text-xs text-gray-400 font-mono">Notes</div>
+                              <div className="whitespace-pre-wrap text-sm font-mono">{s.notes}</div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => openEditor(s)} className="px-3 py-1 border border-gray-600 rounded text-sm font-mono">Edit</button>
+                              <button
+                                onClick={() => deleteSession(s.id)}
+                                className="px-3 py-1 border border-gray-600 rounded text-sm text-red-400 font-mono"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+        )}
       </div>
     </div>
   );

@@ -1,3 +1,15 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  background-color: black;
+}
+
 @tailwind base;
+@layer base {
+  html, body {
+    @apply m-0 p-0 bg-black text-white;
+  }
+}
+
 @tailwind components;
 @tailwind utilities;

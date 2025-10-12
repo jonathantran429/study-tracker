@@ -36,13 +36,14 @@ function daysArray(days = 365) {
   return arr;
 }
 
-/**  default thresholds (seconds) 1s, 30 min, 1 hr, 2hr, 3hr, 4hr, 5hr */
-const DEFAULT_THRESHOLDS = [1, 30 * 60,  60 * 60, 2 * 60 * 60, 3*60*60];
+/**  default thresholds (seconds) 1s, 30 min, 1 hr, 2hr, 3hr, 4hr*/
+const DEFAULT_THRESHOLDS = [1, 30 * 60,  60 * 60, 2 * 60 * 60, 3*60*60, 4*60*60];
 
 /** returns the color of a tile given the number of seconds studied, using DEFAULT_THRESHOLDS */
 function colorForCount(seconds, thresholds = DEFAULT_THRESHOLDS) {
   if (!seconds || seconds <= 0) return "bg-gray-700";
-  const [t1, t2, t3, t4, t5]  = thresholds;
+  const [t1, t2, t3, t4, t5, t6]  = thresholds;
+  if (seconds >= t6) return "bg-green-700";
   if (seconds >= t5) return "bg-green-600";
   if (seconds >= t4) return "bg-green-500";
   if (seconds >= t3) return "bg-green-400";

@@ -1,1 +1,2 @@
-
+- bad study tracker for personal use
+- features: stopwatch, 365 day heatmap, study log, and bugs

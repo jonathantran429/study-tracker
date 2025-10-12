@@ -291,15 +291,15 @@ export default function App() {
 
         <div className="space-x-2 mb-4">
           {!isRunning && elapsedOffset === 0 && (
-            <button onClick={handleStart} className="px-4 py-2 font-mono rounded bg-green-600 text-white">Start</button>
+            <button onClick={handleStart} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
           )}
           {isRunning && (
-            <button onClick={handlePause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">Pause</button>
+            <button onClick={handlePause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">⏸️</button>
           )}
           {!isRunning && elapsedOffset > 0 && (
-            <button onClick={handleResume} className="px-4 py-2 font-mono rounded bg-green-500 text-white">Resume</button>
+            <button onClick={handleResume} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
           )}
-          <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">Save</button>
+          <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">💾</button>
         </div>
       </div>
 

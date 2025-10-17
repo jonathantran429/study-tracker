@@ -286,7 +286,7 @@ export default function App() {
   const { hh, mm, ss } = secondsToHMS(Math.floor(totalTime / 1000));
 
   return (
-    <div className="min-h-screen w-screen bg-black text-white p-6 overflow-x-hidden">
+    <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
 
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
 
@@ -307,7 +307,7 @@ export default function App() {
       </div>
 
 
-      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
          <div className="flex justify-center w-full">
             <div style={gridStyle}>
             {dayList.map((d) => {

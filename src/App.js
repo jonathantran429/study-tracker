@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
+import "./App.css";
 
 /** returns a time in hh:mm:ss form given a ms */ 
 function formatDuration(ms) {
@@ -309,7 +310,7 @@ export default function App() {
 
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
          <div className="flex justify-center w-full">
-            <div style={gridStyle}>
+            <div style={gridStyle} className="custom-scrollbar">
             {dayList.map((d) => {
               const key = startOfDayISO(d);
               const seconds = countsByDay[key] || 0;

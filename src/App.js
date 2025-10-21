@@ -205,7 +205,34 @@ export default function App() {
   }
 
   // begin compute heatmap counts per day (seconds)
-  const dayList = daysArray(365);
+  // determine how many days should display on heatmap depending on the date
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  let dayList;
+  switch (dayOfWeek) {
+    case 0: 
+      dayList = daysArray(365);
+      break;
+    case 1:
+      dayList = daysArray(366);
+      break;
+    case 2:
+      dayList = daysArray(367);
+      break;
+    case 3:
+      dayList = daysArray(368);
+      break;
+    case 4:
+      dayList = daysArray(369);
+      break;
+    case 5:
+      dayList = daysArray(370);
+      break;
+    case 6:
+      dayList = daysArray(371);
+      break;
+  }
+
   const countsByDay = {};
   sessions.forEach((sess) => {
     const start = sess.startAt || (sess.endAt ? sess.endAt - sess.durationMs : null);
@@ -224,6 +251,16 @@ export default function App() {
       cursor = segEnd;
     }
   });
+
+  const weekdaysStyle = {
+    display: "grid",
+    gridTemplateRows: "repeat(7, 12px)",
+    gridAutoFlow: "column",
+    gap: "4px",
+    alignItems: "center",
+    justifyContent: "center", 
+    width: "max-content", 
+  }
 
   const gridStyle = {
     display: "grid",
@@ -309,23 +346,34 @@ export default function App() {
 
 
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
-         <div className="flex justify-center w-full">
-            <div style={gridStyle} className="custom-scrollbar">
-            {dayList.map((d) => {
-              const key = startOfDayISO(d);
-              const seconds = countsByDay[key] || 0;
-              const cls = colorForCount(seconds);
-              const { hh, mm, ss } = secondsToHMS(seconds);
-              const tooltip = `${key} — ${hh}h ${mm}m ${ss}s`;
-              return (  
-                <div
-                  key={key}
-                  title={tooltip}
-                  className={`w-3 h-3 rounded-sm border border-gray-700 ${cls}`}
-                  style={{ width: 12, height: 12 }}
-                />
-              );
-            })}
+         <div className="flex justify-center w-full gap-x-2">
+            <div style={weekdaysStyle}>
+              <div className="font-mono text-[12px] text-right">Su</div>
+              <div className="font-mono text-[12px] text-right">Mo</div>
+              <div className="font-mono text-[12px] text-right">Tu</div>
+              <div className="font-mono text-[12px] text-right">We</div>
+              <div className="font-mono text-[12px] text-right">Th</div> 
+              <div className="font-mono text-[12px] text-right">Fr</div>
+              <div className="font-mono text-[12px] text-right">Sa</div> 
+            </div>
+            <div className="custom-scrollbar overflow-x-auto">
+              <div style={gridStyle} className="custom-scrollbar">
+              {dayList.map((d) => {
+                const key = startOfDayISO(d);
+                const seconds = countsByDay[key] || 0;
+                const cls = colorForCount(seconds);
+                const { hh, mm, ss } = secondsToHMS(seconds);
+                const tooltip = `${key} — ${hh}h ${mm}m ${ss}s`;
+                return (  
+                  <div
+                    key={key}
+                    title={tooltip}
+                    className={`w-3 h-3 rounded-sm border border-gray-700 ${cls}`}
+                    style={{ width: 12, height: 12 }}
+                  />
+                );
+              })}
+              </div>
             </div>
          </div>
       </div>

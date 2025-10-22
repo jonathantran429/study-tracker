@@ -207,31 +207,7 @@ export default function App() {
   // begin compute heatmap counts per day (seconds)
   // determine how many days should display on heatmap depending on the date
   const today = new Date();
-  const dayOfWeek = today.getDay();
-  let dayList;
-  switch (dayOfWeek) {
-    case 0: 
-      dayList = daysArray(365);
-      break;
-    case 1:
-      dayList = daysArray(366);
-      break;
-    case 2:
-      dayList = daysArray(367);
-      break;
-    case 3:
-      dayList = daysArray(368);
-      break;
-    case 4:
-      dayList = daysArray(369);
-      break;
-    case 5:
-      dayList = daysArray(370);
-      break;
-    case 6:
-      dayList = daysArray(371);
-      break;
-  }
+  const dayList = daysArray(365 + today.getDay());  
 
   const countsByDay = {};
   sessions.forEach((sess) => {

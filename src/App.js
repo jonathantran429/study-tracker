@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import "./App.css";
+import { loadSessions, saveSessions } from "./db";
 
 /** returns a time in hh:mm:ss form given a ms */ 
 function formatDuration(ms) {
@@ -110,41 +111,38 @@ export default function App() {
   const [editDraft, setEditDraft] = useState(null);
   const notesRef = useRef(null);
 
-  // loading sessions from local storage into memory
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("study_sessions_v1");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const normalized = parsed.map((s) => {
-          const session = { ...s };
-          if (!session.endAt && session.date) {
-            const maybeMs = Number(session.date);
-            if (!Number.isNaN(maybeMs)) session.endAt = maybeMs;
-            else session.endAt = new Date(session.date).getTime();
-          }
-          if (!session.startAt) {
-            if (session.durationMs) session.startAt = (session.endAt || Date.now()) - session.durationMs;
-            else session.startAt = session.endAt || Date.now();
-          }
-          session.durationMs = Number(session.durationMs) || Math.max(0, (session.endAt || Date.now()) - session.startAt);
-          if (!session.topic) session.topic = "(no topic)";
-          if (!session.notes) session.notes = "";
-          return session;
-        });
-        setSessions(normalized);
-      }
-    } catch (e) {
-      console.error("Failed to load sessions", e);
-    }
+    loadSessions()
+      .then((stored) => {
+        if (stored && stored.length > 0) {
+          const normalized = stored.map((s) => {
+            const session = { ...s };
+            if (!session.endAt && session.date) {
+              const maybeMs = Number(session.date);
+              if (!Number.isNaN(maybeMs)) session.endAt = maybeMs;
+              else session.endAt = new Date(session.date).getTime();
+            }
+            if (!session.startAt) {
+              if (session.durationMs)
+                session.startAt = (session.endAt || Date.now()) - session.durationMs;
+              else session.startAt = session.endAt || Date.now();
+            }
+            session.durationMs =
+              Number(session.durationMs) ||
+              Math.max(0, (session.endAt || Date.now()) - session.startAt);
+            if (!session.topic) session.topic = "(no topic)";
+            if (!session.notes) session.notes = "";
+            return session;
+          });
+          setSessions(normalized);
+        }
+      })
+      .catch((err) => console.error("Failed to load sessions", err));
   }, []);
 
-  // saving sessions from memory into local storage
   useEffect(() => {
-    try {
-      localStorage.setItem("study_sessions_v1", JSON.stringify(sessions));
-    } catch (e) {
-      console.error("Failed to save sessions", e);
+    if (sessions.length > 0) {
+      saveSessions(sessions).catch((err) => console.error("Failed to save sessions", err));
     }
   }, [sessions]);
 

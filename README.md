@@ -1,3 +1,3 @@
 - bad study tracker for personal use
-- uses browser cache to store logs and hours (won't save if you clear cache)
+- uses indexedDB for storing logs
 - features: stopwatch, 365 day heatmap, study log, and bugs

@@ -134,6 +134,8 @@ export default function App() {
             if (!session.notes) session.notes = "";
             return session;
           });
+          
+          normalized.sort((a, b) => (b.endAt || 0) - (a.endAt || 0));
           setSessions(normalized);
         }
       })

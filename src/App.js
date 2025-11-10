@@ -244,11 +244,15 @@ export default function App() {
     }
   });
 
+
+  const TILE_SIZE = 15; 
+  const TILE_GAP = 5;   
+
   const weekdaysStyle = {
     display: "grid",
-    gridTemplateRows: "repeat(7, 12px)",
+    gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
     gridAutoFlow: "column",
-    gap: "4px",
+    gap: `${TILE_GAP}px`, 
     alignItems: "center",
     justifyContent: "center", 
     width: "max-content", 
@@ -256,10 +260,10 @@ export default function App() {
 
   const gridStyle = {
     display: "grid",    
-    gridTemplateRows: "repeat(7, 12px)",
+    gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
     gridAutoFlow: "column",
-    gridAutoColumns: "12px",
-    gap: "4px",
+    gridAutoColumns: `${TILE_SIZE}px`, 
+    gap: `${TILE_GAP}px`, 
     alignItems: "center",
     justifyContent: "center", 
     overflowX: "auto",
@@ -338,7 +342,6 @@ export default function App() {
   const { hh, mm, ss } = secondsToHMS(Math.floor(totalTime / 1000));
   const { hh: avgHHPerDay, mm: avgMMPerDay, ss: avgSSPerDay } = secondsToHMS(Math.floor(totalTime / 1000 / Object.keys(countsByDay).length));
 
-
   return (
     <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
 
@@ -371,13 +374,13 @@ export default function App() {
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
          <div className="flex justify-center w-full gap-x-2">
             <div style={weekdaysStyle}>
-              <div className="font-mono text-[12px] text-right">Su</div>
-              <div className="font-mono text-[12px] text-right">Mo</div>
-              <div className="font-mono text-[12px] text-right">Tu</div>
-              <div className="font-mono text-[12px] text-right">We</div>
-              <div className="font-mono text-[12px] text-right">Th</div> 
-              <div className="font-mono text-[12px] text-right">Fr</div>
-              <div className="font-mono text-[12px] text-right">Sa</div> 
+              <div className="font-mono text-sm text-right">Su</div>
+              <div className="font-mono text-sm text-right">Mo</div>
+              <div className="font-mono text-sm text-right">Tu</div>
+              <div className="font-mono text-sm text-right">We</div>
+              <div className="font-mono text-sm text-right">Th</div> 
+              <div className="font-mono text-sm text-right">Fr</div>
+              <div className="font-mono text-sm text-right">Sa</div> 
             </div>
             <div className="custom-scrollbar overflow-x-auto">
               <div style={gridStyle} className="custom-scrollbar">
@@ -391,8 +394,8 @@ export default function App() {
                   <div
                     key={key}
                     title={tooltip}
-                    className={`w-3 h-3 rounded-sm border border-gray-700 ${cls}`}
-                    style={{ width: 12, height: 12 }}
+                    className={`rounded-sm border border-gray-700 ${cls}`}
+                    style={{ width: TILE_SIZE, height: TILE_SIZE }}
                   />
                 );
               })}

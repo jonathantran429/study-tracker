@@ -105,6 +105,7 @@ export default function App() {
   const tickRef = useRef(null);
   const [sessions, setSessions] = useState([]);
   const [logOpen, setLogOpen] = useState(false);
+  const [filterRange, setFilterRange] = useState("year");
 
   // editing state
   const [editingId, setEditingId] = useState(null);
@@ -112,29 +113,40 @@ export default function App() {
   const notesRef = useRef(null);
 
   useEffect(() => {
+    // loading sessions into memory
     loadSessions()
       .then((stored) => {
         if (stored && stored.length > 0) {
           const normalized = stored.map((s) => {
             const session = { ...s };
+
+            // handling if session end time doesn't exist
             if (!session.endAt && session.date) {
               const maybeMs = Number(session.date);
               if (!Number.isNaN(maybeMs)) session.endAt = maybeMs;
               else session.endAt = new Date(session.date).getTime();
             }
+            
+            // handling if the session start time doesn't exist
             if (!session.startAt) {
               if (session.durationMs)
                 session.startAt = (session.endAt || Date.now()) - session.durationMs;
               else session.startAt = session.endAt || Date.now();
             }
+
+            // handling if session duration doesn't exist
             session.durationMs =
               Number(session.durationMs) ||
               Math.max(0, (session.endAt || Date.now()) - session.startAt);
+
+            // handling if session topic & notes don't exist 
             if (!session.topic) session.topic = "(no topic)";
             if (!session.notes) session.notes = "";
+
             return session;
           });
           
+          // sort sessions from most recent to oldest
           normalized.sort((a, b) => (b.endAt || 0) - (a.endAt || 0));
           setSessions(normalized);
         }
@@ -208,9 +220,13 @@ export default function App() {
   // determine how many days should display on heatmap depending on the date
   const today = new Date();
   const dayList = daysArray(365 + today.getDay());  
+  const cutoff = getDateCutoff(filterRange);
+  const filteredSessions = sessions.filter(
+    (s) => (s.endAt || s.startAt) >= cutoff.getTime()
+  );
 
-  const countsByDay = {};
-  sessions.forEach((sess) => {
+  const countsByDay = {};     
+  filteredSessions.forEach((sess) => {
     const start = sess.startAt || (sess.endAt ? sess.endAt - sess.durationMs : null);
     const end = sess.endAt || (sess.startAt ? sess.startAt + sess.durationMs : null);
     const sMs = typeof start === "number" ? start : new Date(start).getTime();
@@ -224,7 +240,7 @@ export default function App() {
       const seconds = Math.round((segEnd - cursor) / 1000);
       const key = startOfDayISO(cursor);
       countsByDay[key] = (countsByDay[key] || 0) + seconds;
-      cursor = segEnd;
+      cursor = segEnd;    
     }
   });
 
@@ -239,7 +255,7 @@ export default function App() {
   }
 
   const gridStyle = {
-    display: "grid",
+    display: "grid",    
     gridTemplateRows: "repeat(7, 12px)",
     gridAutoFlow: "column",
     gridAutoColumns: "12px",
@@ -287,21 +303,48 @@ export default function App() {
     setEditDraft(null);
   }
 
+  function getDateCutoff(range) {
+    const now = new Date();
+    switch (range) {
+      case "week":
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      case "2weeks":
+        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000 * 2);
+      case "month":
+        return new Date(now.setMonth(now.getMonth() - 1));
+      case "3months":
+        return new Date(now.setMonth(now.getMonth() - 3));
+      case "6months":
+        return new Date(now.setMonth(now.getMonth() - 6));
+      case "year":
+      default:
+        return new Date(now.setFullYear(now.getFullYear() - 1));
+    }
+  }
+
   // auto-resize notes textarea while editing
   useLayoutEffect(() => {
-    if (notesRef.current) {
-      notesRef.current.style.height = "auto";
-      notesRef.current.style.height = `${notesRef.current.scrollHeight}px`;
-    }
+    if (!notesRef.current) return;
+    const el = notesRef.current;
+
+    requestAnimationFrame(() => {
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight + 2}px`; // add small buffer
+    });
   }, [editDraft]);
   
-  // total time across all sessions
-  const totalTime = sessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
+  // sum up the time across all sessions, store average time per day
+  const totalTime = filteredSessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
   const { hh, mm, ss } = secondsToHMS(Math.floor(totalTime / 1000));
+  const { hh: avgHHPerDay, mm: avgMMPerDay, ss: avgSSPerDay } = secondsToHMS(Math.floor(totalTime / 1000 / Object.keys(countsByDay).length));
+
 
   return (
     <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
 
+      {/* 
+      Stopwatch Area 
+      */}
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
 
         <div className="text-4xl font-mono mb-4">{formatDuration(currentElapsed)}</div>
@@ -321,6 +364,10 @@ export default function App() {
       </div>
 
 
+
+      {/* 
+      Heatmap Area 
+      */}
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
          <div className="flex justify-center w-full gap-x-2">
             <div style={weekdaysStyle}>
@@ -354,6 +401,11 @@ export default function App() {
          </div>
       </div>
 
+
+
+      {/* 
+      Logs and stats area 
+      */}
       <div className=" flex flex-col items-center">
         <button
           onClick={() => setLogOpen(!logOpen)}
@@ -364,19 +416,47 @@ export default function App() {
 
         {logOpen && (
           <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
-                  <div className="text-gray-500 font-mono">
-                    {hh}h {mm}m {ss}s
+                  <div className="text-gray-500 font-mono text-center">
+                    {hh}h {mm}m {ss}s / total<br></br>
+                    {avgHHPerDay}h {avgMMPerDay}m {avgSSPerDay}s / avg study day
                   </div>
+                  <br></br>
+
+                  {/*
+                  Filter by date dropdown.
+                  */}
+                  <div className="flex justify-center mb-2">
+                  <select
+                    value={filterRange}
+                    onChange={(e) => setFilterRange(e.target.value)}
+                    className="bg-gray-800 text-white rounded px-1 py-1 font-mono"
+                  >
+                    <option value="week">Past Week</option>
+                    <option value="2weeks">Past 2 Weeks</option>
+                    <option value="month">Past Month</option>
+                    <option value="3months">Past 3 Months</option>
+                    <option value="6months">Past 6 Months</option>
+                    <option value="year">Past Year</option>
+                  </select>
+                  </div>
+                  
+                  {/*
+                  Session logs list.
+                  */}
                   <div className="space-y-3">
-                    {sessions.length === 0 && <div className="text-gray-500 font-mono">No sessions recorded yet.</div>}
-                    {sessions.map((s) => (
+                    {filteredSessions.length === 0 && <div className="text-gray-500 font-mono">No sessions recorded yet.</div>}
+                    {filteredSessions.map((s) => (  
+
+                      /*
+                      * Editing session html
+                      */ 
                       <div key={s.id} className="p-3 border border-gray-700 rounded">
                         {editingId === s.id && editDraft ? (
                           <div>
                             <div className="text-sm text-gray-400 mb-1 font-mono">Editing session</div>
                             <div className="text-lg font-medium mb-2 font-mono">{formatDuration(editDraft.durationMs || 0)}</div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                            <div className="grid grid-cols-1 gap-2 mb-2">
                               <div>
                                 <label className="block text-xs text-gray-400 font-mono">Topic</label>
                                 <input
@@ -398,45 +478,73 @@ export default function App() {
                               </div>
                             </div>
 
+                            {/* 
+                            Start time datepicker field 
+                            */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                               <div>
-                                <label className="block text-xs text-gray-400 font-mono">Start (local)</label>
+                                <label className="block text-xs text-gray-400 font-mono">Start (local) - Use date picker</label>
                                 <input
                                   type="datetime-local"
                                   value={toLocalDatetimeString(editDraft.startAt)}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, startAt: fromLocalDatetimeString(e.target.value) }))}
+                                  onChange={(e) =>
+                                    setEditDraft((d) => ({
+                                      ...d,
+                                      startAt: fromLocalDatetimeString(e.target.value),
+                                    }))
+                                  }
+                                  onKeyDown={(e) => e.preventDefault()} // disable manual typing
+                                  onPaste={(e) => e.preventDefault()}   // disable paste
                                   className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                  style={{ cursor: "pointer" }}
                                 />
                               </div>
+
+                              {/* 
+                              End time datepicker field 
+                              */}
                               <div>
-                                <label className="block text-xs text-gray-400 font-mono">End (local)</label>
+                                <label className="block text-xs text-gray-400 font-mono">End (local) - Use date picker</label>
                                 <input
                                   type="datetime-local"
-                                  value={toLocalDatetimeString(editDraft.endAt)}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, endAt: fromLocalDatetimeString(e.target.value) }))}
+                                  value={toLocalDatetimeString(editDraft.startAt)}
+                                  onChange={(e) =>
+                                    setEditDraft((d) => ({
+                                      ...d,
+                                      endAt: fromLocalDatetimeString(e.target.value),
+                                    }))
+                                  }
+                                  onKeyDown={(e) => e.preventDefault()} // disable manual typing field
+                                  onPaste={(e) => e.preventDefault()}   // disable paste
                                   className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                  style={{ cursor: "pointer" }}
                                 />
                               </div>
                             </div>
-
+                            
+                            {/* 
+                            Save and cancel edit buttons 
+                            */}
                             <div className="flex items-center gap-2">
                               <button onClick={saveEdit} className="px-3 py-1 rounded bg-green-600 text-white font-mono">Save</button>
                               <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-700 text-white font-mono">Cancel</button>
                             </div>
                           </div>
                         ) : (
+
+                          // Not editing session (normal display) html
                           <div>
                             <div className="text-sm text-gray-400 font-mono">{new Date(s.startAt).toLocaleString()} — {new Date(s.endAt).toLocaleString()}</div>
                             <div className="text-lg font-medium mb-2 font-mono">{formatDuration(s.durationMs)}</div>
 
                             <div className="mb-2">
                               <div className="text-xs text-gray-400 font-mono">Topic</div>
-                              <div className="text-sm font-mono">{s.topic}</div>
+                              <div className="text-sm font-mono break-words">{s.topic}</div>
                             </div>
 
                             <div className="mb-2">
                               <div className="text-xs text-gray-400 font-mono">Notes</div>
-                              <div className="whitespace-pre-wrap text-sm font-mono">{s.notes}</div>
+                              <div className="whitespace-pre-wrap text-sm font-mono break-words max-w-[1300px]">{s.notes}</div>
                             </div>
 
                             <div className="flex items-center gap-2">

@@ -507,7 +507,7 @@ export default function App() {
                                 <label className="block text-xs text-gray-400 font-mono">End (local) - Use date picker</label>
                                 <input
                                   type="datetime-local"
-                                  value={toLocalDatetimeString(editDraft.startAt)}
+                                  value={toLocalDatetimeString(editDraft.endAt)}
                                   onChange={(e) =>
                                     setEditDraft((d) => ({
                                       ...d,

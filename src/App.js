@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
 import "./App.css";
 import { loadSessions, saveSessions } from "./db";
+import useStopwatch from "./hooks/stopwatch";
 
 /** returns a time in hh:mm:ss form given a ms */ 
 function formatDuration(ms) {
@@ -106,6 +107,7 @@ export default function App() {
   const [sessions, setSessions] = useState([]);
   const [logOpen, setLogOpen] = useState(false);
   const [filterRange, setFilterRange] = useState("year");
+  const stopwatch = useStopwatch();
 
   // editing state
   const [editingId, setEditingId] = useState(null);
@@ -160,56 +162,18 @@ export default function App() {
     }
   }, [sessions]);
 
-  useEffect(() => {
-    if (isRunning) {
-      tickRef.current = setInterval(() => setTick((t) => t + 1), 500);
-    } else {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
-    return () => clearInterval(tickRef.current);
-  }, [isRunning]);
-
-  const currentElapsed = isRunning ? Date.now() - startAt + elapsedOffset : elapsedOffset;
-
-  function handleStart() {
-    if (isRunning) return;
-    const now = Date.now();
-    setStartAt(now);
-    setIsRunning(true);
-  }
-
-  function handlePause() {
-    if (!isRunning) return;
-    setElapsedOffset((prev) => prev + (Date.now() - startAt));
-    setStartAt(null);
-    setIsRunning(false);
-  }
-
-  function handleResume() {
-    if (isRunning) return;
-    setStartAt(Date.now());
-    setIsRunning(true);
-  }
-
   function handleStopAndSave() {
-    const endTime = Date.now();
-    const duration = isRunning ? endTime - startAt + elapsedOffset : elapsedOffset;
-    if (duration <= 0) return;
+    const result = stopwatch.stop();
+    if (!result) return;
 
     const session = {
       id: Math.random().toString(36).slice(2),
-      endAt: endTime,
-      startAt: endTime - duration,
-      durationMs: duration,
+      ...result,
       topic: "",
       notes: "",
     };
 
     setSessions((s) => [session, ...s]);
-    setIsRunning(false);
-    setStartAt(null);
-    setElapsedOffset(0);
   }
 
   function deleteSession(id) {
@@ -350,17 +314,17 @@ export default function App() {
       */}
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
 
-        <div className="text-4xl font-mono mb-4">{formatDuration(currentElapsed)}</div>
+        <div className="text-4xl font-mono mb-4">{formatDuration(stopwatch.currentElapsed)}</div>
 
         <div className="space-x-2 mb-4">
-          {!isRunning && elapsedOffset === 0 && (
-            <button onClick={handleStart} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
+          {!stopwatch.isRunning && elapsedOffset === 0 && (
+            <button onClick={stopwatch.start} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
           )}
-          {isRunning && (
-            <button onClick={handlePause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">⏸️</button>
+          {stopwatch.isRunning && (
+            <button onClick={stopwatch.pause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">⏸️</button>
           )}
-          {!isRunning && elapsedOffset > 0 && (
-            <button onClick={handleResume} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
+          {!stopwatch.isRunning && elapsedOffset > 0 && (
+            <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
           )}
           <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">💾</button>
         </div>

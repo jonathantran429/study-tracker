@@ -15,8 +15,8 @@ export default function useStopwatch() {
             tickRef.current = setInterval(() => setTick((t) => t + 1), 500);
         } else {
             if (tickRef.current) {
-                clearInterval(tickRef.current);
-                tickRef.current = null;
+            clearInterval(tickRef.current);
+            tickRef.current = null;
             }
         }
         return () => clearInterval(tickRef.current);

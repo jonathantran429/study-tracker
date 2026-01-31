@@ -108,6 +108,8 @@ export default function App() {
   const [logOpen, setLogOpen] = useState(false);
   const [filterRange, setFilterRange] = useState("year");
   const stopwatch = useStopwatch();
+  const [selectedTags, setSelectedTags] = useState([]);
+
 
   // editing state
   const [editingId, setEditingId] = useState(null);
@@ -144,6 +146,7 @@ export default function App() {
             // handling if session topic & notes don't exist 
             if (!session.topic) session.topic = "(no topic)";
             if (!session.notes) session.notes = "";
+            if (!Array.isArray(session.tags)) session.tags = [];
 
             return session;
           });
@@ -171,6 +174,7 @@ export default function App() {
       ...result,
       topic: "",
       notes: "",
+      tags: [],
     };
 
     setSessions((s) => [session, ...s]);
@@ -185,9 +189,25 @@ export default function App() {
   const today = new Date();
   const dayList = daysArray(365 + today.getDay());  
   const cutoff = getDateCutoff(filterRange);
-  const filteredSessions = sessions.filter(
+  const dateFilteredSessions = sessions.filter(
     (s) => (s.endAt || s.startAt) >= cutoff.getTime()
   );
+
+  const filteredSessions =
+    selectedTags.length === 0
+      ? dateFilteredSessions
+      : dateFilteredSessions.filter(s =>
+          (s.tags || []).some(tag => selectedTags.includes(tag))
+        );
+  // get all tags from the session list
+  const allTags = React.useMemo(() => {
+    const set = new Set();
+      sessions.forEach(s => {
+        (s.tags || []).forEach(t => set.add(t));
+      });
+      return Array.from(set).sort();
+  }, [sessions]); 
+
 
   const countsByDay = {};     
   filteredSessions.forEach((sess) => {
@@ -238,7 +258,10 @@ export default function App() {
   // editing helpers
   function openEditor(session) {
     setEditingId(session.id);
-    setEditDraft({ ...session });
+    setEditDraft({
+      ...session,
+      tagsInput: (session.tags || []).join(", "),
+    });
     // delay to allow textarea ref to exist before measuring
     setTimeout(() => {
       if (notesRef.current) {
@@ -265,6 +288,12 @@ export default function App() {
     editDraft.topic = editDraft.topic || "(no topic)";
     editDraft.notes = editDraft.notes || "";
     editDraft.durationMs = ea - sa;
+    editDraft.tags = (editDraft.tagsInput || "")
+      .split(",")
+      .map(t => t.trim())
+      .filter(Boolean);
+    delete editDraft.tagsInput;
+
 
     setSessions((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...editDraft } : s)));
     setEditingId(null);
@@ -386,7 +415,7 @@ export default function App() {
                   <div className="text-gray-500 font-mono text-center">
                     {hh}h {mm}m {ss}s / total<br></br>
                     {avgHHPerDay}h {avgMMPerDay}m {avgSSPerDay}s / avg study day
-                  </div>
+                  </div>  
                   <br></br>
 
                   {/*
@@ -406,6 +435,51 @@ export default function App() {
                     <option value="year">Past Year</option>
                   </select>
                   </div>
+                  
+                  {/*
+                  Filter by tag dropdown
+                  */}
+                  <div className="flex flex-wrap justify-center gap-2 mb-3">
+                    {allTags.length === 0 && (
+                      <div className="text-gray-500 font-mono text-sm">
+                        No tags yet
+                      </div>
+                    )}
+
+                    {allTags.map(tag => {
+                      const active = selectedTags.includes(tag);
+
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() =>
+                            setSelectedTags(prev =>
+                              prev.includes(tag)
+                                ? prev.filter(t => t !== tag)
+                                : [...prev, tag]
+                            )
+                          }
+                          className={`px-2 py-1 rounded text-xs font-mono border
+                            ${active
+                              ? "bg-green-700 border-green-500 text-white"
+                              : "bg-gray-800 border-gray-600 text-gray-300"}
+                          `}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+
+                    {selectedTags.length > 0 && (
+                      <button
+                        onClick={() => setSelectedTags([])}
+                        className="px-2 py-1 rounded text-xs font-mono border border-gray-600 bg-gray-900 text-gray-400"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
                   
                   {/*
                   Session logs list.
@@ -431,6 +505,17 @@ export default function App() {
                                   onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
                                   className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
                                 />
+                                <input
+                                  value={editDraft.tagsInput ?? ""}
+                                  onChange={(e) =>
+                                    setEditDraft(d => ({
+                                      ...d,
+                                      tagsInput: e.target.value,
+                                    }))
+                                  }
+                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
+                                />
+
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-400 font-mono">Notes</label>
@@ -508,6 +593,22 @@ export default function App() {
                               <div className="text-xs text-gray-400 font-mono">Topic</div>
                               <div className="text-sm font-mono break-words">{s.topic}</div>
                             </div>
+
+                            {s.tags.length > 0 && (
+                            <div className="mb-2">
+                              <div className="text-xs text-gray-400 font-mono">Tags</div>
+                              <div className="flex flex-wrap gap-1">
+                                {s.tags.map(tag => (
+                                  <span
+                                    key={tag}
+                                    className="px-2 py-0.5 text-xs font-mono rounded bg-gray-700"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            )}
 
                             <div className="mb-2">
                               <div className="text-xs text-gray-400 font-mono">Notes</div>

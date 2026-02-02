@@ -437,7 +437,7 @@ export default function App() {
                   </div>
                   
                   {/*
-                  Filter by tag dropdown
+                  Filter by tag 
                   */}
                   <div className="flex flex-wrap justify-center gap-2 mb-3">
                     {allTags.length === 0 && (
@@ -469,15 +469,6 @@ export default function App() {
                         </button>
                       );
                     })}
-
-                    {selectedTags.length > 0 && (
-                      <button
-                        onClick={() => setSelectedTags([])}
-                        className="px-2 py-1 rounded text-xs font-mono border border-gray-600 bg-gray-900 text-gray-400"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
 
                   

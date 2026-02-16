@@ -109,6 +109,8 @@ export default function App() {
   const [filterRange, setFilterRange] = useState("year");
   const stopwatch = useStopwatch();
   const [selectedTags, setSelectedTags] = useState([]);
+  const [timerHidden, setTimerHidden] = useState(false);
+
 
 
   // editing state
@@ -166,6 +168,10 @@ export default function App() {
   }, [sessions]);
 
   function handleStopAndSave() {
+    // show confirmation dialog
+    const ok = window.confirm("Are you sure you want to save this session?");
+    if (!ok) return; // user pressed Cancel, stop here
+
     const result = stopwatch.stop();
     if (!result) return;
 
@@ -179,6 +185,30 @@ export default function App() {
 
     setSessions((s) => [session, ...s]);
   }
+
+  function exportSessions() {
+    if (!sessions || sessions.length === 0) {
+      alert("No sessions to export!");
+      return;
+    }
+
+    // Convert sessions array to JSON
+    const json = JSON.stringify(sessions, null, 2);
+
+    // Create a blob and URL
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    // Create a temporary link to trigger download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `study_sessions_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+
+    // Clean up
+    URL.revokeObjectURL(url);
+  }
+
 
   function deleteSession(id) {
     setSessions((prev) => prev.filter((s) => s.id !== id));
@@ -343,7 +373,10 @@ export default function App() {
       */}
       <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
 
-        <div className="text-4xl font-mono mb-4">{formatDuration(stopwatch.currentElapsed)}</div>
+        <div className="text-4xl font-mono mb-4">
+          {timerHidden ? "--:--:--" : formatDuration(stopwatch.currentElapsed)}
+        </div>
+
 
         <div className="space-x-2 mb-4">
           {!stopwatch.isRunning && elapsedOffset === 0 && (
@@ -356,6 +389,15 @@ export default function App() {
             <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
           )}
           <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">💾</button>
+          
+
+          {/* Toggle timer visibility */}
+          <button
+            onClick={() => setTimerHidden(!timerHidden)}
+            className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
+          >
+            {timerHidden ? "Show" : "Hide"}
+          </button>
         </div>
       </div>
 
@@ -421,7 +463,7 @@ export default function App() {
                   {/*
                   Filter by date dropdown.
                   */}
-                  <div className="flex justify-center mb-2">
+                  <div className="flex justify-center mb-2 gap-x-2">
                   <select
                     value={filterRange}
                     onChange={(e) => setFilterRange(e.target.value)}
@@ -434,6 +476,13 @@ export default function App() {
                     <option value="6months">Past 6 Months</option>
                     <option value="year">Past Year</option>
                   </select>
+
+                    <button
+                      onClick={exportSessions}
+                      className="bg-gray-800 text-white rounded px-1 py-1 font-mono"
+                    >
+                      Export JSON
+                    </button>
                   </div>
                   
                   {/*

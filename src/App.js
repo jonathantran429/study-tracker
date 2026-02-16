@@ -1,416 +1,186 @@
-import React, { useEffect, useState, useRef, useLayoutEffect } from "react";
+import React, { useEffect, useState, useRef, useLayoutEffect, useMemo, memo } from "react";
 import "./App.css";
 import { loadSessions, saveSessions } from "./db";
 import useStopwatch from "./hooks/stopwatch";
 
-/** returns a time in hh:mm:ss form given a ms */ 
+// ==========================================
+// 1. UTILITY FUNCTIONS (Moved outside to avoid recreation)
+// ==========================================
+
+const DEFAULT_THRESHOLDS = [1, 1800, 3600, 7200, 10800, 14400, 18000, 21600, 25200];
+const TILE_SIZE = 15;
+const TILE_GAP = 5;
+const MS_PER_DAY = 86400000;
+const MS_PER_SECOND = 1000;
+const SEC_PER_HOUR = 3600;
+const MIN_PER_HOUR = 60;
+const HEATMAP_DAYS = 365;
+const GRID_STYLE = {
+  display: "grid",    
+  gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
+  gridAutoFlow: "column",
+  gridAutoColumns: `${TILE_SIZE}px`, 
+  gap: `${TILE_GAP}px`, 
+  alignItems: "center",
+  justifyContent: "center", 
+  overflowX: "auto",
+  width: "max-content",     
+};
+const WEEKDAYS_STYLE = {
+  display: "grid",
+  gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`,
+  gap: `${TILE_GAP}px`,
+  justifyContent: "center",
+};
+
 function formatDuration(ms) {
-  const s = Math.floor(ms / 1000);
-  const hh = Math.floor(s / 3600)
-    .toString()
-    .padStart(2, "0");
-  const mm = Math.floor((s % 3600) / 60)
-    .toString()
-    .padStart(2, "0");
-  const ss = Math.floor(s % 60)
-    .toString()
-    .padStart(2, "0");
+  const s = Math.floor(ms / MS_PER_SECOND);
+  const hh = Math.floor(s / SEC_PER_HOUR).toString().padStart(2, "0");
+  const mm = Math.floor((s % SEC_PER_HOUR) / MIN_PER_HOUR).toString().padStart(2, "0");
+  const ss = Math.floor(s % MIN_PER_HOUR).toString().padStart(2, "0");
   return `${hh}:${mm}:${ss}`;
 }
 
-/** returns a string representing given date in mm-dd-yyyy form */
 function startOfDayISO(tsOrDate) {
   const d = new Date(tsOrDate);
   d.setHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
 }
 
-/** returns an array of Date objects representing each of the last 365 (default) days */ 
-function daysArray(days = 365) {
+function daysArray(days = HEATMAP_DAYS) {
   const arr = [];
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const base = today.getTime();
   for (let i = days - 1; i >= 0; i--) {
-    const ts = base - i * MS_PER_DAY;
-    arr.push(new Date(ts));
+    arr.push(new Date(base - i * MS_PER_DAY));
   }
   return arr;
 }
 
-/**  default thresholds (seconds) 1s, 30 min, 1 hr, 2hr, 3hr, 4hr*/
-const DEFAULT_THRESHOLDS = [1, 30 * 60,  60 * 60, 2 * 60 * 60, 3*60*60, 4*60*60, 5*60*60, 6*60*60, 7*60*60];
-
-/** returns the color of a tile given the number of seconds studied, using DEFAULT_THRESHOLDS */
-function colorForCount(seconds, thresholds = DEFAULT_THRESHOLDS) {
+function colorForCount(seconds) {
   if (!seconds || seconds <= 0) return "bg-gray-700";
-  const [t1, t2, t3, t4, t5, t6, t7, t8, t9]  = thresholds;
-  if (seconds >= t9) return "bg-green-200";
-  if (seconds >= t8) return "bg-green-300";
-  if (seconds >= t7) return "bg-green-400";
-  if (seconds >= t6) return "bg-green-500";
-  if (seconds >= t5) return "bg-green-600";
-  if (seconds >= t4) return "bg-green-700";
-  if (seconds >= t3) return "bg-green-800";
-  if (seconds >= t2) return "bg-green-900";
-  if (seconds >= t1) return "bg-green-950";
+  const t = DEFAULT_THRESHOLDS;
+  if (seconds >= t[8]) return "bg-green-200";
+  if (seconds >= t[7]) return "bg-green-300";
+  if (seconds >= t[6]) return "bg-green-400";
+  if (seconds >= t[5]) return "bg-green-500";
+  if (seconds >= t[4]) return "bg-green-600";
+  if (seconds >= t[3]) return "bg-green-700";
+  if (seconds >= t[2]) return "bg-green-800";
+  if (seconds >= t[1]) return "bg-green-900";
+  if (seconds >= t[0]) return "bg-green-950";
   return "bg-gray-700";
 }
 
-/** returns {hours, minutes, seconds} in an array, given a number of seconds */
 function secondsToHMS(sec) {
   const s = Math.floor(sec);
-  const hh = Math.floor(s / 3600);
-  const mm = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-  return { hh, mm, ss };
+  return { 
+    hh: Math.floor(s / SEC_PER_HOUR), 
+    mm: Math.floor((s % SEC_PER_HOUR) / MIN_PER_HOUR), 
+    ss: s % MIN_PER_HOUR 
+  };
 }
 
-/** returns a given string padded with 2 zeros*/
-function pad(n) {
-  return n.toString().padStart(2, "0");
-}
-
-/** returns a formatted local datetime string given a number of ms since start of day*/
 function toLocalDatetimeString(ms) {
-  if (ms === null || ms === undefined) return "";
+  if (!ms) return "";
   const d = new Date(Number(ms));
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
+  const pad = (n) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** returns a Date object representing the local datetime string,  
- * expected format: YYYY-MM-DDTHH:mm (value of input[type=datetime-local]) 
-*/
 function fromLocalDatetimeString(str) {
   if (!str) return null;
-  // expected format: YYYY-MM-DDTHH:mm (value of input[type=datetime-local])
-  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  const day = Number(m[3]);
-  const hour = Number(m[4]);
-  const minute = Number(m[5]);
-  return new Date(year, month - 1, day, hour, minute).getTime();
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d.getTime();
 }
 
-export default function App() {
-  const [isRunning, setIsRunning] = useState(false);
-  const [startAt, setStartAt] = useState(null);
-  const [elapsedOffset, setElapsedOffset] = useState(0);
-  const [tick, setTick] = useState(0);
-  const tickRef = useRef(null);
-  const [sessions, setSessions] = useState([]);
-  const [logOpen, setLogOpen] = useState(false);
-  const [filterRange, setFilterRange] = useState("year");
+function getDateCutoff(range) {
+  const now = new Date();
+  const cutoff = new Date(now); // Create copy
+  switch (range) {
+    case "week": cutoff.setDate(cutoff.getDate() - 7); break;
+    case "2weeks": cutoff.setDate(cutoff.getDate() - 14); break;
+    case "month": cutoff.setMonth(cutoff.getMonth() - 1); break;
+    case "3months": cutoff.setMonth(cutoff.getMonth() - 3); break;
+    case "6months": cutoff.setMonth(cutoff.getMonth() - 6); break;
+    case "year": default: cutoff.setFullYear(cutoff.getFullYear() - 1); break;
+  }
+  return cutoff;
+}
+
+// ==========================================
+// 2. ISOLATED TIMER COMPONENT
+// ==========================================
+/** * This component handles high-frequency updates.
+ * The parent (App) only re-renders when onSessionComplete is called.
+ */
+const StopwatchSection = memo(({ onSessionComplete }) => {
   const stopwatch = useStopwatch();
-  const [selectedTags, setSelectedTags] = useState([]);
   const [timerHidden, setTimerHidden] = useState(false);
 
-
-
-  // editing state
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState(null);
-  const notesRef = useRef(null);
-
-  useEffect(() => {
-    // loading sessions into memory
-    loadSessions()
-      .then((stored) => {
-        if (stored && stored.length > 0) {
-          const normalized = stored.map((s) => {
-            const session = { ...s };
-
-            // handling if session end time doesn't exist
-            if (!session.endAt && session.date) {
-              const maybeMs = Number(session.date);
-              if (!Number.isNaN(maybeMs)) session.endAt = maybeMs;
-              else session.endAt = new Date(session.date).getTime();
-            }
-            
-            // handling if the session start time doesn't exist
-            if (!session.startAt) {
-              if (session.durationMs)
-                session.startAt = (session.endAt || Date.now()) - session.durationMs;
-              else session.startAt = session.endAt || Date.now();
-            }
-
-            // handling if session duration doesn't exist
-            session.durationMs =
-              Number(session.durationMs) ||
-              Math.max(0, (session.endAt || Date.now()) - session.startAt);
-
-            // handling if session topic & notes don't exist 
-            if (!session.topic) session.topic = "(no topic)";
-            if (!session.notes) session.notes = "";
-            if (!Array.isArray(session.tags)) session.tags = [];
-
-            return session;
-          });
-          
-          // sort sessions from most recent to oldest
-          normalized.sort((a, b) => (b.endAt || 0) - (a.endAt || 0));
-          setSessions(normalized);
-        }
-      })
-      .catch((err) => console.error("Failed to load sessions", err));
-  }, []);
-
-  useEffect(() => {
-    if (sessions.length > 0) {
-      saveSessions(sessions).catch((err) => console.error("Failed to save sessions", err));
-    }
-  }, [sessions]);
-
-  function handleStopAndSave() {
-    // show confirmation dialog
-    const ok = window.confirm("Are you sure you want to save this session?");
-    if (!ok) return; // user pressed Cancel, stop here
-
+  const handleStopAndSave = () => {
+    if (!window.confirm("Are you sure you want to save this session?")) return;
+    
     const result = stopwatch.stop();
     if (!result) return;
 
-    const session = {
-      id: Math.random().toString(36).slice(2),
+    onSessionComplete({
       ...result,
+      id: Math.random().toString(36).slice(2),
       topic: "",
       notes: "",
       tags: [],
-    };
-
-    setSessions((s) => [session, ...s]);
-  }
-
-  function exportSessions() {
-    if (!sessions || sessions.length === 0) {
-      alert("No sessions to export!");
-      return;
-    }
-
-    // Convert sessions array to JSON
-    const json = JSON.stringify(sessions, null, 2);
-
-    // Create a blob and URL
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-
-    // Create a temporary link to trigger download
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `study_sessions_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-
-    // Clean up
-    URL.revokeObjectURL(url);
-  }
-
-
-  function deleteSession(id) {
-    const ok = window.confirm("Are you sure you want to delete this session?");
-    if (!ok) return; // user pressed Cancel, stop here
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-  }
-
-  // begin compute heatmap counts per day (seconds)
-  // determine how many days should display on heatmap depending on the date
-  const today = new Date();
-  const dayList = daysArray(365 + today.getDay());  
-  const cutoff = getDateCutoff(filterRange);
-  const dateFilteredSessions = sessions.filter(
-    (s) => (s.endAt || s.startAt) >= cutoff.getTime()
-  );
-
-  const filteredSessions =
-    selectedTags.length === 0
-      ? dateFilteredSessions
-      : dateFilteredSessions.filter(s =>
-          (s.tags || []).some(tag => selectedTags.includes(tag))
-        );
-  // get all tags from the session list
-  const allTags = React.useMemo(() => {
-    const set = new Set();
-      sessions.forEach(s => {
-        (s.tags || []).forEach(t => set.add(t));
-      });
-      return Array.from(set).sort();
-  }, [sessions]); 
-
-
-  const countsByDay = {};     
-  filteredSessions.forEach((sess) => {
-    const start = sess.startAt || (sess.endAt ? sess.endAt - sess.durationMs : null);
-    const end = sess.endAt || (sess.startAt ? sess.startAt + sess.durationMs : null);
-    const sMs = typeof start === "number" ? start : new Date(start).getTime();
-    const eMs = typeof end === "number" ? end : new Date(end).getTime();
-    if (!sMs || !eMs || eMs <= sMs) return;
-
-    let cursor = sMs;
-    while (cursor < eMs) {
-      const dayEnd = new Date(new Date(cursor).setHours(24, 0, 0, 0));
-      const segEnd = Math.min(eMs, dayEnd.getTime());
-      const seconds = Math.round((segEnd - cursor) / 1000);
-      const key = startOfDayISO(cursor);
-      countsByDay[key] = (countsByDay[key] || 0) + seconds;
-      cursor = segEnd;    
-    }
-  });
-
-
-  const TILE_SIZE = 15; 
-  const TILE_GAP = 5;   
-
-  const weekdaysStyle = {
-    display: "grid",
-    gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
-    gridAutoFlow: "column",
-    gap: `${TILE_GAP}px`, 
-    alignItems: "center",
-    justifyContent: "center", 
-    width: "max-content", 
-  }
-
-  const gridStyle = {
-    display: "grid",    
-    gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
-    gridAutoFlow: "column",
-    gridAutoColumns: `${TILE_SIZE}px`, 
-    gap: `${TILE_GAP}px`, 
-    alignItems: "center",
-    justifyContent: "center", 
-    overflowX: "auto",
-    width: "max-content",     
+    });
   };
 
-
-  // editing helpers
-  function openEditor(session) {
-    setEditingId(session.id);
-    setEditDraft({
-      ...session,
-      tagsInput: (session.tags || []).join(", "),
-    });
-    // delay to allow textarea ref to exist before measuring
-    setTimeout(() => {
-      if (notesRef.current) {
-        notesRef.current.style.height = "auto";
-        notesRef.current.style.height = `${notesRef.current.scrollHeight}px`;
-      }
-    }, 0);
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditDraft(null);
-  }
-
-  function saveEdit() {
-    if (!editDraft) return;
-    const sa = Number(editDraft.startAt);
-    const ea = Number(editDraft.endAt);
-    if (Number.isNaN(sa) || Number.isNaN(ea) || ea <= sa) {
-      alert("Please enter a valid start and end time (end must be after start)");
-      return;
-    }
-    // ensure topic & notes are strings
-    editDraft.topic = editDraft.topic || "(no topic)";
-    editDraft.notes = editDraft.notes || "";
-    editDraft.durationMs = ea - sa;
-    editDraft.tags = (editDraft.tagsInput || "")
-      .split(",")
-      .map(t => t.trim())
-      .filter(Boolean);
-    delete editDraft.tagsInput;
-
-
-    setSessions((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...editDraft } : s)));
-    setEditingId(null);
-    setEditDraft(null);
-  }
-
-  function getDateCutoff(range) {
-    const now = new Date();
-    switch (range) {
-      case "week":
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      case "2weeks":
-        return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000 * 2);
-      case "month":
-        return new Date(now.setMonth(now.getMonth() - 1));
-      case "3months":
-        return new Date(now.setMonth(now.getMonth() - 3));
-      case "6months":
-        return new Date(now.setMonth(now.getMonth() - 6));
-      case "year":
-      default:
-        return new Date(now.setFullYear(now.getFullYear() - 1));
-    }
-  }
-
-  // auto-resize notes textarea while editing
-  useLayoutEffect(() => {
-    if (!notesRef.current) return;
-    const el = notesRef.current;
-
-    requestAnimationFrame(() => {
-      el.style.height = "auto";
-      el.style.height = `${el.scrollHeight + 2}px`; // add small buffer
-    });
-  }, [editDraft]);
-  
-  // sum up the time across all sessions, store average time per day
-  const totalTime = filteredSessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
-  const { hh, mm, ss } = secondsToHMS(Math.floor(totalTime / 1000));
-  const { hh: avgHHPerDay, mm: avgMMPerDay, ss: avgSSPerDay } = secondsToHMS(Math.floor(totalTime / 1000 / Object.keys(countsByDay).length));
-
   return (
-    <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
-
-      {/* 
-      Stopwatch Area 
-      */}
-      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
-
-        <div className="text-4xl font-mono mb-4">
-          {timerHidden ? "--:--:--" : formatDuration(stopwatch.currentElapsed)}
-        </div>
-
-
-        <div className="space-x-2 mb-4">
-          {!stopwatch.isRunning && elapsedOffset === 0 && (
-            <button onClick={stopwatch.start} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
-          )}
-          {stopwatch.isRunning && (
-            <button onClick={stopwatch.pause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black">⏸️</button>
-          )}
-          {!stopwatch.isRunning && elapsedOffset > 0 && (
-            <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white">▶️</button>
-          )}
-          <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white">💾</button>
-          
-
-          {/* Toggle timer visibility */}
-          <button
-            onClick={() => setTimerHidden(!timerHidden)}
-            className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
-          >
-            {timerHidden ? "Show" : "Hide"}
-          </button>
-        </div>
+    <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+      <div className="text-4xl font-mono mb-4">
+        {timerHidden ? "--:--:--" : formatDuration(stopwatch.currentElapsed)}
       </div>
 
+      <div className="space-x-2 mb-4">
+        {!stopwatch.isRunning && stopwatch.currentElapsed === 0 && (
+          <button onClick={stopwatch.start} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Start">▶️</button>
+        )}
+        {stopwatch.isRunning && (
+          <button onClick={stopwatch.pause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black" aria-label="Pause">⏸️</button>
+        )}
+        {!stopwatch.isRunning && stopwatch.currentElapsed > 0 && (
+          <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Resume">▶️</button>
+        )}
+        
+        <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white" aria-label="Save">💾</button>
+        
+        <button
+          onClick={() => setTimerHidden(!timerHidden)}
+          className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
+        >
+          {timerHidden ? "Show" : "Hide"}
+        </button>
+      </div>
+    </div>
+  );
+});
+StopwatchSection.displayName = 'StopwatchSection';
 
+// ==========================================
+// 3. MEMOIZED HEATMAP COMPONENT
+// ==========================================
+const Heatmap = memo(({ countsByDay }) => {  
+  
+  // Memoize heavy date math
+  const dayList = useMemo(() => {
+    const today = new Date();
+    return daysArray(365 + today.getDay());
+  }, []);
 
-      {/* 
-      Heatmap Area 
-      */}
-      <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
-         <div className="flex justify-center w-full gap-x-2">
-            <div style={weekdaysStyle}>
+  return (
+    <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">    
+       <div className="flex justify-center w-full gap-x-2">
+            <div style={WEEKDAYS_STYLE}>
               <div className="font-mono text-sm text-right">Su</div>
               <div className="font-mono text-sm text-right">Mo</div>
               <div className="font-mono text-sm text-right">Tu</div>
@@ -419,259 +189,302 @@ export default function App() {
               <div className="font-mono text-sm text-right">Fr</div>
               <div className="font-mono text-sm text-right">Sa</div> 
             </div>
-            <div className="custom-scrollbar overflow-x-auto">
-              <div style={gridStyle} className="custom-scrollbar">
-              {dayList.map((d) => {
-                const key = startOfDayISO(d);
-                const seconds = countsByDay[key] || 0;
-                const cls = colorForCount(seconds);
-                const { hh, mm, ss } = secondsToHMS(seconds);
-                const tooltip = `${key} — ${hh}h ${mm}m ${ss}s`;
-                return (  
-                  <div
-                    key={key}
-                    title={tooltip}
-                    className={`rounded-sm border border-gray-700 ${cls}`}
-                    style={{ width: TILE_SIZE, height: TILE_SIZE }}
-                  />
-                );
-              })}
-              </div>
+          <div className="custom-scrollbar overflow-x-auto">
+            <div style={GRID_STYLE} className="custom-scrollbar">
+            {dayList.map((d) => {
+              const key = startOfDayISO(d);
+              const seconds = countsByDay[key] || 0;
+              const { hh, mm, ss } = secondsToHMS(seconds);
+              return (  
+                <div
+                  key={key}
+                  title={`${key} — ${hh}h ${mm}m ${ss}s`}
+                  className={`rounded-sm border border-gray-700 ${colorForCount(seconds)}`}
+                  style={{ width: TILE_SIZE, height: TILE_SIZE }}
+                />
+              );
+            })}
             </div>
-         </div>
-      </div>
+          </div>
+       </div>
+    </div>
+  );
+});
+Heatmap.displayName = 'Heatmap';
+
+// ==========================================
+// 4. MAIN APP COMPONENT
+// ==========================================
+export default function App() {
+  const [sessions, setSessions] = useState([]);
+  const [logOpen, setLogOpen] = useState(false);
+  const [filterRange, setFilterRange] = useState("year");
+  const [selectedTags, setSelectedTags] = useState([]);
+
+  // Editing state
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState(null);
+  const notesRef = useRef(null);
+
+  // Load Initial Data
+  useEffect(() => {
+    loadSessions()
+      .then((stored) => {
+        if (stored && stored.length > 0) {
+        const normalized = stored.map((s) => ({
+          ...s,
+          id: s.id || Math.random().toString(36).slice(2),
+          endAt: s.endAt || (s.date ? new Date(s.date).getTime() : Date.now()),
+          startAt: s.startAt ?? (s.endAt ? s.endAt - (s.durationMs || 0) : Date.now()),
+          durationMs: s.durationMs || 0,
+          topic: s.topic || "(no topic)",
+          notes: s.notes || "",
+          tags: Array.isArray(s.tags) ? s.tags : []
+        }));
+        normalized.sort((a, b) => (b.endAt || 0) - (a.endAt || 0));
+        setSessions(normalized);
+        }
+      })
+      .catch((err) => console.error("Failed to load sessions", err));
+  }, []);
+
+  // save on change
+  useEffect(() => {
+    saveSessions(sessions).catch((err) => console.error("Failed to save sessions", err));
+  }, [sessions]);
+
+  const handleSessionComplete = (newSession) => {
+    setSessions((prev) => [newSession, ...prev]);
+  };
+
+  const deleteSession = (id) => {
+    if (window.confirm("Are you sure you want to delete this session?")) {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+    }
+  };
+
+  // Memoized Derived State
+  const allTags = useMemo(() => {
+    const set = new Set();
+    sessions.forEach(s => (s.tags || []).forEach(t => set.add(t)));
+    return Array.from(set).sort();
+  }, [sessions]);
+
+  const filteredSessions = useMemo(() => {
+    const cutoff = getDateCutoff(filterRange);
+    const dateFiltered = sessions.filter(
+      (s) => (s.endAt || s.startAt) >= cutoff.getTime()
+    );
+
+    return selectedTags.length === 0
+      ? dateFiltered
+      : dateFiltered.filter(s => (s.tags || []).some(tag => selectedTags.includes(tag)));
+  }, [sessions, filterRange, selectedTags]);
+
+const countsByDay = useMemo(() => {
+  const counts = {};
+  filteredSessions.forEach((sess) => {
+    const start = sess.startAt || (sess.endAt ? sess.endAt - sess.durationMs : null);
+    const end = sess.endAt || (sess.startAt ? sess.startAt + sess.durationMs : null);
+    
+    let sMs = new Date(start).getTime();
+    let eMs = new Date(end).getTime();
+    
+    if (!sMs || !eMs || eMs <= sMs) return;
+
+    let cursor = sMs;
+    while (cursor < eMs) {
+      const d = new Date(cursor);
+      d.setHours(24, 0, 0, 0); // Move to start of next day
+      const segEnd = Math.min(eMs, d.getTime());
+      const seconds = Math.round((segEnd - cursor) / 1000);
+      const key = startOfDayISO(cursor);
+      
+      counts[key] = (counts[key] || 0) + seconds;
+      cursor = segEnd;    
+    }
+  });
+  return counts;
+}, [filteredSessions]);
+
+const stats = useMemo(() => {
+  const totalTime = filteredSessions.reduce((sum, s) => sum + (s.durationMs || 0), 0);
+  const studyDays = Object.keys(countsByDay).length || 1;
+  
+  return {
+    total: secondsToHMS(totalTime / 1000),
+    avg: secondsToHMS(Math.floor(totalTime / 1000 / studyDays))
+  };
+}, [filteredSessions, countsByDay]);
+
+  // Export Logic
+  const exportSessions = () => {
+    if (!sessions.length) return alert("No sessions to export!");
+    const blob = new Blob([JSON.stringify(sessions, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `study_sessions_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Edit Logic
+  const openEditor = (session) => {
+    setEditingId(session.id);
+    setEditDraft({ ...session, tagsInput: (session.tags || []).join(", ") });
+  };
+
+  const saveEdit = () => {
+    if (!editDraft) return;
+    const sa = Number(editDraft.startAt);
+    const ea = Number(editDraft.endAt);
+    if (isNaN(sa) || isNaN(ea)) {
+      return alert("Please enter valid dates");
+    }
+    if (ea <= sa) {
+      return alert("End time must be after start time");
+    }
+    if (ea > Date.now()) {
+      return alert("End time cannot be in the future");
+    }
+
+    const updated = {
+        ...editDraft,
+        durationMs: ea - sa,
+        tags: (editDraft.tagsInput || "").split(",").map(t => t.trim()).filter(Boolean)
+    };
+    delete updated.tagsInput;
+
+    setSessions((prev) => prev.map((s) => (s.id === editingId ? { ...s, ...updated } : s)));
+    setEditingId(null);
+    setEditDraft(null);
+  };
+
+  // Auto-resize text area
+  useLayoutEffect(() => {
+    if (notesRef.current) {
+        notesRef.current.style.height = "auto";
+        notesRef.current.style.height = `${notesRef.current.scrollHeight + 2}px`;
+    }
+  }, [editDraft?.notes, editingId]); // Depend on notes content or editing ID
+
+  return (
+    <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
+      
+      {/* ISOLATED STOPWATCH: Updates here won't re-render App or Heatmap */}
+      <StopwatchSection onSessionComplete={handleSessionComplete} />
+
+      {/* MEMOIZED HEATMAP: Only updates when sessions change */}
+      <Heatmap countsByDay={countsByDay} /> 
 
 
-
-      {/* 
-      Logs and stats area 
-      */}
-      <div className=" flex flex-col items-center">
-        <button
-          onClick={() => setLogOpen(!logOpen)}
-          className="text-2xl font-semibold mb-3 flex flex-col items-center"
-        >
-          {logOpen ? "▲" : "▼"} 
+      {/* LOGS AREA */}
+      <div className="flex flex-col items-center">
+        <button onClick={() => setLogOpen(!logOpen)} className="text-2xl font-semibold mb-3">
+          {logOpen ? "▲" : "▼"}
         </button>
 
         {logOpen && (
-          <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
-                  <div className="text-gray-500 font-mono text-center">
-                    {hh}h {mm}m {ss}s / total<br></br>
-                    {avgHHPerDay}h {avgMMPerDay}m {avgSSPerDay}s / avg study day
-                  </div>  
-                  <br></br>
+          <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center w-full max-w-4xl">
+            <div className="text-gray-500 font-mono text-center mb-4">
+              {stats.total.hh}h {stats.total.mm}m {stats.total.ss}s / total<br />
+              {stats.avg.hh}h {stats.avg.mm}m {stats.avg.ss}s / avg study day (of active days)
+            </div>
 
-                  {/*
-                  Filter by date dropdown.
-                  */}
-                  <div className="flex justify-center mb-2 gap-x-2">
-                  <select
-                    value={filterRange}
-                    onChange={(e) => setFilterRange(e.target.value)}
-                    className="bg-gray-800 text-white rounded px-1 py-1 font-mono"
-                  >
-                    <option value="week">Past Week</option>
-                    <option value="2weeks">Past 2 Weeks</option>
-                    <option value="month">Past Month</option>
-                    <option value="3months">Past 3 Months</option>
-                    <option value="6months">Past 6 Months</option>
-                    <option value="year">Past Year</option>
-                  </select>
+            {/* Controls */}
+            <div className="flex flex-wrap justify-center gap-2 mb-4">
+              <select 
+                value={filterRange} 
+                onChange={(e) => setFilterRange(e.target.value)}
+                className="bg-gray-800 text-white rounded px-2 py-1 font-mono"
+              >
+                <option value="week">Past Week</option>
+                <option value="2weeks">Past 2 Weeks</option>
+                <option value="month">Past Month</option>
+                <option value="3months">Past 3 Months</option>
+                <option value="6months">Past 6 Months</option>
+                <option value="year">Past Year</option>
+              </select>
+              <button onClick={exportSessions} className="bg-gray-800 text-white rounded px-2 py-1 font-mono">
+                Export JSON
+              </button>
+            </div>
 
-                    <button
-                      onClick={exportSessions}
-                      className="bg-gray-800 text-white rounded px-1 py-1 font-mono"
-                    >
-                      Export JSON
-                    </button>
-                  </div>
-                  
-                  {/*
-                  Filter by tag 
-                  */}
-                  <div className="flex flex-wrap justify-center gap-2 mb-3">
-                    {allTags.length === 0 && (
-                      <div className="text-gray-500 font-mono text-sm">
-                        No tags yet
+            {/* Tags Filter */}
+            <div className="flex flex-wrap justify-center gap-2 mb-4">
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])}
+                  className={`px-2 py-1 rounded text-xs font-mono border ${selectedTags.includes(tag) ? "bg-green-700 border-green-500" : "bg-gray-800 border-gray-600 text-gray-300"}`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+
+            {/* Session List */}
+            <div className="space-y-3 w-full">
+              {filteredSessions.map((s) => (
+                <div key={s.id} className="p-3 border border-gray-700 rounded bg-gray-900/50">
+                  {editingId === s.id && editDraft ? (
+                    // EDIT MODE
+                    <div className="flex flex-col gap-2">
+                        <div className="text-sm text-gray-400 font-mono">Editing</div>
+                        <input 
+                            className="bg-gray-800 border border-gray-600 rounded p-1 font-mono text-sm"
+                            value={editDraft.topic} 
+                            onChange={e => setEditDraft({...editDraft, topic: e.target.value})} 
+                            placeholder="Topic"
+                        />
+                        <input 
+                            className="bg-gray-800 border border-gray-600 rounded p-1 font-mono text-sm"
+                            value={editDraft.tagsInput} 
+                            onChange={e => setEditDraft({...editDraft, tagsInput: e.target.value})} 
+                            placeholder="Tags (comma separated)"
+                        />
+                        <textarea 
+                            ref={notesRef}
+                            className="bg-gray-800 border border-gray-600 rounded p-1 font-mono text-sm resize-none overflow-hidden"
+                            value={editDraft.notes} 
+                            onChange={e => setEditDraft({...editDraft, notes: e.target.value})} 
+                            placeholder="Notes"
+                            rows={3}
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                            <input type="datetime-local" className="bg-gray-800 border border-gray-600 rounded p-1 text-xs" value={toLocalDatetimeString(editDraft.startAt)} onChange={e => setEditDraft({...editDraft, startAt: fromLocalDatetimeString(e.target.value)})} />
+                            <input type="datetime-local" className="bg-gray-800 border border-gray-600 rounded p-1 text-xs" value={toLocalDatetimeString(editDraft.endAt)} onChange={e => setEditDraft({...editDraft, endAt: fromLocalDatetimeString(e.target.value)})} />
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                            <button onClick={saveEdit} className="bg-green-700 px-3 py-1 rounded text-sm font-mono">Save</button>
+                            <button onClick={() => {setEditingId(null); setEditDraft(null)}} className="bg-gray-700 px-3 py-1 rounded text-sm font-mono">Cancel</button>
+                        </div>
+                    </div>
+                  ) : (
+                    // VIEW MODE
+                    <div>
+                      <div className="text-sm text-gray-400 font-mono flex justify-between">
+                         <span>{new Date(s.startAt).toLocaleString()}</span>
+                         <span>{formatDuration(s.durationMs)}</span>
                       </div>
-                    )}
-
-                    {allTags.map(tag => {
-                      const active = selectedTags.includes(tag);
-
-                      return (
-                        <button
-                          key={tag}
-                          onClick={() =>
-                            setSelectedTags(prev =>
-                              prev.includes(tag)
-                                ? prev.filter(t => t !== tag)
-                                : [...prev, tag]
-                            )
-                          }
-                          className={`px-2 py-1 rounded text-xs font-mono border
-                            ${active
-                              ? "bg-green-700 border-green-500 text-white"
-                              : "bg-gray-800 border-gray-600 text-gray-300"}
-                          `}
-                        >
-                          {tag}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  
-                  {/*
-                  Session logs list.
-                  */}
-                  <div className="space-y-3">
-                    {filteredSessions.length === 0 && <div className="text-gray-500 font-mono">No sessions recorded yet.</div>}
-                    {filteredSessions.map((s) => (  
-
-                      /*
-                      * Editing session html
-                      */ 
-                      <div key={s.id} className="p-3 border border-gray-700 rounded">
-                        {editingId === s.id && editDraft ? (
-                          <div>
-                            <div className="text-sm text-gray-400 mb-1 font-mono">Editing session</div>
-                            <div className="text-lg font-medium mb-2 font-mono">{formatDuration(editDraft.durationMs || 0)}</div>
-
-                            <div className="grid grid-cols-1 gap-2 mb-2">
-                              <div>
-                                <label className="block text-xs text-gray-400 font-mono">Topic</label>
-                                <input
-                                  value={editDraft.topic}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, topic: e.target.value }))}
-                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
-                                />
-                                <input
-                                  value={editDraft.tagsInput ?? ""}
-                                  onChange={(e) =>
-                                    setEditDraft(d => ({
-                                      ...d,
-                                      tagsInput: e.target.value,
-                                    }))
-                                  }
-                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
-                                />
-
-                              </div>
-                              <div>
-                                <label className="block text-xs text-gray-400 font-mono">Notes</label>
-                                <textarea
-                                  ref={notesRef}
-                                  value={editDraft.notes}
-                                  onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))}
-                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
-                                  rows={3}
-                                  style={{ resize: "none", overflow: "hidden" }}
-                                />
-                              </div>
-                            </div>
-
-                            {/* 
-                            Start time datepicker field 
-                            */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
-                              <div>
-                                <label className="block text-xs text-gray-400 font-mono">Start (local) - Use date picker</label>
-                                <input
-                                  type="datetime-local"
-                                  value={toLocalDatetimeString(editDraft.startAt)}
-                                  onChange={(e) =>
-                                    setEditDraft((d) => ({
-                                      ...d,
-                                      startAt: fromLocalDatetimeString(e.target.value),
-                                    }))
-                                  }
-                                  onKeyDown={(e) => e.preventDefault()} // disable manual typing
-                                  onPaste={(e) => e.preventDefault()}   // disable paste
-                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
-                                  style={{ cursor: "pointer" }}
-                                />
-                              </div>
-
-                              {/* 
-                              End time datepicker field 
-                              */}
-                              <div>
-                                <label className="block text-xs text-gray-400 font-mono">End (local) - Use date picker</label>
-                                <input
-                                  type="datetime-local"
-                                  value={toLocalDatetimeString(editDraft.endAt)}
-                                  onChange={(e) =>
-                                    setEditDraft((d) => ({
-                                      ...d,
-                                      endAt: fromLocalDatetimeString(e.target.value),
-                                    }))
-                                  }
-                                  onKeyDown={(e) => e.preventDefault()} // disable manual typing field
-                                  onPaste={(e) => e.preventDefault()}   // disable paste
-                                  className="mt-1 w-full border border-gray-600 bg-gray-800 text-white rounded px-2 py-1 font-mono"
-                                  style={{ cursor: "pointer" }}
-                                />
-                              </div>
-                            </div>
-                            
-                            {/* 
-                            Save and cancel edit buttons 
-                            */}
-                            <div className="flex items-center gap-2">
-                              <button onClick={saveEdit} className="px-3 py-1 rounded bg-green-600 text-white font-mono">Save</button>
-                              <button onClick={cancelEdit} className="px-3 py-1 rounded bg-gray-700 text-white font-mono">Cancel</button>
-                            </div>
+                      <div className="font-bold font-mono mt-1">{s.topic}</div>
+                      {s.tags.length > 0 && (
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                              {s.tags.map(t => <span key={t} className="bg-gray-700 text-xs px-1 rounded font-mono">{t}</span>)}
                           </div>
-                        ) : (
-
-                          // Not editing session (normal display) html
-                          <div>
-                            <div className="text-sm text-gray-400 font-mono">{new Date(s.startAt).toLocaleString()} — {new Date(s.endAt).toLocaleString()}</div>
-                            <div className="text-lg font-medium mb-2 font-mono">{formatDuration(s.durationMs)}</div>
-
-                            <div className="mb-2">
-                              <div className="text-xs text-gray-400 font-mono">Topic</div>
-                              <div className="text-sm font-mono break-words">{s.topic}</div>
-                            </div>
-
-                            {s.tags.length > 0 && (
-                            <div className="mb-2">
-                              <div className="text-xs text-gray-400 font-mono">Tags</div>
-                              <div className="flex flex-wrap gap-1">
-                                {s.tags.map(tag => (
-                                  <span
-                                    key={tag}
-                                    className="px-2 py-0.5 text-xs font-mono rounded bg-gray-700"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            )}
-
-                            <div className="mb-2">
-                              <div className="text-xs text-gray-400 font-mono">Notes</div>
-                              <div className="whitespace-pre-wrap text-sm font-mono break-words max-w-[1300px]">{s.notes}</div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <button onClick={() => openEditor(s)} className="px-3 py-1 border border-gray-600 rounded text-sm font-mono">Edit</button>
-                              <button
-                                onClick={() => deleteSession(s.id)}
-                                className="px-3 py-1 border border-gray-600 rounded text-sm text-red-400 font-mono"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                      )}
+                      {s.notes && <div className="mt-2 whitespace-pre-wrap text-sm font-mono text-gray-300">{s.notes}</div>}
+                      <div className="flex gap-2 mt-3">
+                          <button onClick={() => openEditor(s)} className="text-xs border border-gray-600 px-2 py-1 rounded font-mono">Edit</button>
+                          <button onClick={() => deleteSession(s.id)} className="text-xs border border-red-900 text-red-400 px-2 py-1 rounded font-mono">Delete</button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

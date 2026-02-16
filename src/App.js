@@ -263,17 +263,17 @@ const StopwatchSection = memo(({ onSessionComplete }) => {
             {timerHidden ? "👁️" : "🙈"}
           </button>
 
-          <button
-            onClick={togglePiP}
-            className="px-4 py-2 font-mono rounded bg-purple-600 text-white"
-            title="Pop Out Player"
-          >
-            {pipWindow ? "🗙" : "🗖"}
-          </button>
+          {!pipWindow && (
+            <button
+              onClick={togglePiP}
+              className="px-4 py-2 font-mono rounded bg-purple-600 text-white"
+              aria-label="Pop out"
+            >
+            🗖
+            </button>
+          )}
         </div>
       )}
-
-      {pipWindow && !showConfirm && <div className="text-xs text-gray-500 font-mono mt-2">Always on top</div>}
     </div>
   );
 

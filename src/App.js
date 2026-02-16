@@ -178,6 +178,7 @@ const StopwatchSection = memo(({ onSessionComplete }) => {
       pip.document.body.style.display = "flex";
       pip.document.body.style.justifyContent = "center";
       pip.document.body.style.alignItems = "center";
+      pip.document.body.style.overflow = "hidden";
 
       // 4. Listen for close event (clicking X on the window)
       pip.addEventListener("pagehide", () => {
@@ -498,7 +499,7 @@ const stats = useMemo(() => {
   }, [editDraft?.notes, editingId]); // Depend on notes content or editing ID
 
   return (
-    <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
+    <div className="h-screen bg-black text-white p-6 overflow-x-hidden overflow-y-auto no-scrollbar">
       
       {/* STOPWATCH */}
       <StopwatchSection onSessionComplete={handleSessionComplete} />

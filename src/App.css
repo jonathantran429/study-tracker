@@ -71,3 +71,15 @@
   scrollbar-width: thin; /* show thin gray bar when hovered */
   scrollbar-color: rgba(156, 163, 175, 0.7) rgba(0, 0, 0, 0.1);
 }
+
+/* UTILITY: Hide Scrollbar but allow scrolling */
+/* For Chrome, Safari, and Edge */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* For Firefox, IE and Edge Legacy */
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

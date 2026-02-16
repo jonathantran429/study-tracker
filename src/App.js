@@ -313,7 +313,8 @@ const stats = useMemo(() => {
   
   return {
     total: secondsToHMS(totalTime / 1000),
-    avg: secondsToHMS(Math.floor(totalTime / 1000 / studyDays))
+    avg: secondsToHMS(Math.floor(totalTime / 1000 / studyDays)),
+    daysStudied: studyDays
   };
 }, [filteredSessions, countsByDay]);
 
@@ -388,8 +389,9 @@ const stats = useMemo(() => {
         {logOpen && (
           <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center w-full max-w-4xl">
             <div className="text-gray-500 font-mono text-center mb-4">
-              {stats.total.hh}h {stats.total.mm}m {stats.total.ss}s / total<br />
-              {stats.avg.hh}h {stats.avg.mm}m {stats.avg.ss}s / avg study day (of active days)
+              {stats.total.hh}h {stats.total.mm}m {stats.total.ss}s total<br />
+              {stats.avg.hh}h {stats.avg.mm}m {stats.avg.ss}s avg study day <br />
+              {stats.daysStudied} days studied
             </div>
 
             {/* Controls */}
@@ -407,7 +409,7 @@ const stats = useMemo(() => {
                 <option value="year">Past Year</option>
               </select>
               <button onClick={exportSessions} className="bg-gray-800 text-white rounded px-2 py-1 font-mono">
-                Export JSON
+                Export
               </button>
             </div>
 

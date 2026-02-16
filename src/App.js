@@ -211,6 +211,8 @@ export default function App() {
 
 
   function deleteSession(id) {
+    const ok = window.confirm("Are you sure you want to delete this session?");
+    if (!ok) return; // user pressed Cancel, stop here
     setSessions((prev) => prev.filter((s) => s.id !== id));
   }
 

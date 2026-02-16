@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useLayoutEffect, useMemo, memo } from "react";
+import { createPortal } from "react-dom";
 import "./App.css";
 import { loadSessions, saveSessions } from "./db";
 import useStopwatch from "./hooks/stopwatch";
 
 // ==========================================
-// 1. UTILITY FUNCTIONS (Moved outside to avoid recreation)
+// UTILITY FUNCTIONS 
 // ==========================================
 
 const DEFAULT_THRESHOLDS = [1, 1800, 3600, 7200, 10800, 14400, 18000, 21600, 25200];
@@ -15,6 +16,7 @@ const MS_PER_SECOND = 1000;
 const SEC_PER_HOUR = 3600;
 const MIN_PER_HOUR = 60;
 const HEATMAP_DAYS = 365;
+
 const GRID_STYLE = {
   display: "grid",    
   gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`, 
@@ -26,12 +28,35 @@ const GRID_STYLE = {
   overflowX: "auto",
   width: "max-content",     
 };
+
 const WEEKDAYS_STYLE = {
   display: "grid",
   gridTemplateRows: `repeat(7, ${TILE_SIZE}px)`,
   gap: `${TILE_GAP}px`,
   justifyContent: "center",
 };
+
+
+function copyStyles(sourceDoc, targetDoc) {
+  Array.from(sourceDoc.styleSheets).forEach((styleSheet) => {
+    try {
+      if (styleSheet.cssRules) {
+        const newStyleEl = targetDoc.createElement("style");
+        Array.from(styleSheet.cssRules).forEach((cssRule) => {
+          newStyleEl.appendChild(targetDoc.createTextNode(cssRule.cssText));
+        });
+        targetDoc.head.appendChild(newStyleEl);
+      } else if (styleSheet.href) {
+        const newLinkEl = targetDoc.createElement("link");
+        newLinkEl.rel = "stylesheet";
+        newLinkEl.href = styleSheet.href;
+        targetDoc.head.appendChild(newLinkEl);
+      }
+    } catch (e) {
+      console.warn("Could not copy a stylesheet:", e);
+    }
+  });
+}
 
 function formatDuration(ms) {
   const s = Math.floor(ms / MS_PER_SECOND);
@@ -119,59 +144,161 @@ function getDateCutoff(range) {
 const StopwatchSection = memo(({ onSessionComplete }) => {
   const stopwatch = useStopwatch();
   const [timerHidden, setTimerHidden] = useState(false);
+  const [pipWindow, setPipWindow] = useState(null);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const handleStopAndSave = () => {
-    if (!window.confirm("Are you sure you want to save this session?")) return;
-    
-    const result = stopwatch.stop();
-    if (!result) return;
+  // Handle opening/closing the Picture-in-Picture window
+  const togglePiP = async () => {
+    // If open, close it
+    if (pipWindow) {
+      pipWindow.close();
+      setPipWindow(null);
+      return;
+    }
 
-    onSessionComplete({
-      ...result,
-      id: Math.random().toString(36).slice(2),
-      topic: "",
-      notes: "",
-      tags: [],
-    });
+    // Check browser support
+    if (!window.documentPictureInPicture) {
+      alert("Your browser doesn't support Document Picture-in-Picture (Try Chrome or Edge).");
+      return;
+    }
+
+    try {
+      // 1. Request the window
+      const pip = await window.documentPictureInPicture.requestWindow({
+        width: 350,
+        height: 200,
+      });
+
+      // 2. Copy all app styles (CSS/Tailwind) to the new window
+      copyStyles(document, pip.document);
+
+      // 3. Add background color to match app
+      pip.document.body.style.backgroundColor = "black";
+      pip.document.body.style.color = "white";
+      pip.document.body.style.display = "flex";
+      pip.document.body.style.justifyContent = "center";
+      pip.document.body.style.alignItems = "center";
+
+      // 4. Listen for close event (clicking X on the window)
+      pip.addEventListener("pagehide", () => {
+        setPipWindow(null);
+      });
+
+      setPipWindow(pip);
+    } catch (err) {
+      console.error("Failed to open PiP window:", err);
+    }
   };
 
-  return (
-    <div className="p-4 rounded-lg shadow-sm mb-6 flex flex-col items-center">
+  const handleStopAndSave = () => {
+    // If the timer is at 0, don't even bother confirming
+    if (stopwatch.currentElapsed === 0) return;
+    
+    // Just show the inline UI instead of a browser popup
+    setShowConfirm(true);
+  };
+
+  const confirmSave = () => {
+    const result = stopwatch.stop();
+    if (result) {
+      onSessionComplete({
+        ...result,
+        id: Math.random().toString(36).slice(2),
+        topic: "(no topic)",
+        notes: "",
+        tags: [],
+      });
+    }
+    setShowConfirm(false);
+  };
+
+  {/* STOPWATCH CONTENT */}
+  const stopwatchContent = (
+    <div className="p-4 rounded-lg shadow-sm flex flex-col items-center bg-black w-full h-full justify-center">
       <div className="text-4xl font-mono mb-4">
         {timerHidden ? "--:--:--" : formatDuration(stopwatch.currentElapsed)}
       </div>
 
-      <div className="space-x-2 mb-4">
-        {!stopwatch.isRunning && stopwatch.currentElapsed === 0 && (
-          <button onClick={stopwatch.start} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Start">▶️</button>
-        )}
-        {stopwatch.isRunning && (
-          <button onClick={stopwatch.pause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black" aria-label="Pause">⏸️</button>
-        )}
-        {!stopwatch.isRunning && stopwatch.currentElapsed > 0 && (
-          <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Resume">▶️</button>
-        )}
-        
-        <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white" aria-label="Save">💾</button>
-        
-        <button
-          onClick={() => setTimerHidden(!timerHidden)}
-          className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
-        >
-          {timerHidden ? "Show" : "Hide"}
-        </button>
-      </div>
+      {/* CONDITIONAL CONTROLS */}
+      {showConfirm ? (
+        <div className="flex flex-col items-center">
+          <span className="text-xs font-mono text-blue-400 mb-2 font-bold uppercase tracking-widest">Confirm Save?</span>
+          <div className="space-x-2 flex">
+            <button 
+              onClick={confirmSave} 
+              className="px-4 py-2 font-mono rounded bg-blue-600 text-white border border-blue-400"
+            >
+              YES
+            </button>
+            <button 
+              onClick={() => setShowConfirm(false)} 
+              className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
+            >
+              NO
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-x-2 mb-4 flex flex-wrap justify-center gap-y-2">
+          {!stopwatch.isRunning && stopwatch.currentElapsed === 0 && (
+            <button onClick={stopwatch.start} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Start">▶️</button>
+          )}
+          {stopwatch.isRunning && (
+            <button onClick={stopwatch.pause} className="px-4 py-2 font-mono rounded bg-yellow-500 text-black" aria-label="Pause">⏸️</button>
+          )}
+          {!stopwatch.isRunning && stopwatch.currentElapsed > 0 && (
+            <button onClick={stopwatch.resume} className="px-4 py-2 font-mono rounded bg-green-600 text-white" aria-label="Resume">▶️</button>
+          )}
+          
+          {/* Only show save if there is time elapsed */}
+          {stopwatch.currentElapsed > 0 && (
+            <button onClick={handleStopAndSave} className="px-4 py-2 font-mono rounded bg-blue-600 text-white" aria-label="Save">💾</button>
+          )}
+          
+          <button
+            onClick={() => setTimerHidden(!timerHidden)}
+            className="px-4 py-2 font-mono rounded bg-gray-700 text-white"
+            aria-label={timerHidden ? "Show" : "Hide"}
+          >
+            {timerHidden ? "👁️" : "🙈"}
+          </button>
+
+          <button
+            onClick={togglePiP}
+            className="px-4 py-2 font-mono rounded bg-purple-600 text-white"
+            title="Pop Out Player"
+          >
+            {pipWindow ? "🗙" : "🗖"}
+          </button>
+        </div>
+      )}
+
+      {pipWindow && !showConfirm && <div className="text-xs text-gray-500 font-mono mt-2">Always on top</div>}
     </div>
   );
+
+  // If PiP is active, use a Portal to render content into the PiP window.
+  // Otherwise, render normally.
+  if (pipWindow) {
+    return (
+      <div className="p-4 mb-6 border border-dashed border-gray-700 rounded text-center text-gray-500 font-mono">
+        Timer is popped out 
+        <button onClick={togglePiP} className="ml-2 underline text-green-500">Bring back</button>
+        {createPortal(stopwatchContent, pipWindow.document.body)}
+      </div>
+    );
+  }
+
+  return <div className="mb-6">{stopwatchContent}</div>;
 });
 StopwatchSection.displayName = 'StopwatchSection';
 
 // ==========================================
-// 3. MEMOIZED HEATMAP COMPONENT
+// HEATMAP COMPONENT
 // ==========================================
 const Heatmap = memo(({ countsByDay }) => {  
   
-  // Memoize heavy date math
+  // date math
   const dayList = useMemo(() => {
     const today = new Date();
     return daysArray(365 + today.getDay());
@@ -213,7 +340,7 @@ const Heatmap = memo(({ countsByDay }) => {
 Heatmap.displayName = 'Heatmap';
 
 // ==========================================
-// 4. MAIN APP COMPONENT
+// MAIN APP 
 // ==========================================
 export default function App() {
   const [sessions, setSessions] = useState([]);
@@ -373,10 +500,10 @@ const stats = useMemo(() => {
   return (
     <div className="min-h-screen bg-black text-white p-6 overflow-x-hidden">
       
-      {/* ISOLATED STOPWATCH: Updates here won't re-render App or Heatmap */}
+      {/* STOPWATCH */}
       <StopwatchSection onSessionComplete={handleSessionComplete} />
 
-      {/* MEMOIZED HEATMAP: Only updates when sessions change */}
+      {/* HEATMAP */}
       <Heatmap countsByDay={countsByDay} /> 
 
 
